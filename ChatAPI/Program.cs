@@ -1,5 +1,6 @@
 using ChatAPI;
 using System.Web;
+using Isopoh.Cryptography.Argon2;
 
 var builder = WebApplication.CreateBuilder(args);
 //dodaj baze danych do aplikacji
@@ -10,7 +11,7 @@ var app = builder.Build();
 app.UseBearerMiddleware(); //to jest jeden sposób - ten bardziej poprawny
 //app.UseMiddleware<BearerMiddleware>(); //to jest drugi sposób - oba dzia³aj¹
 //ustaw adresy ip i porty
-app.Urls.Add("http://0.0.0.0:5000");
+app.Urls.Add("http://192.168.6.24:5000");
 app.UseRouting();
 
 //TODO: do wywalenia po zintegrowaniu z baz¹ danych
@@ -23,10 +24,19 @@ app.UseRouting();
 app.MapGet("/", () => "Hello World!");
 
 //logowanie u¿ytkownika
-app.MapPost("/user/me", (Database db, User user) =>
+
+app.MapPost("/user/me", (Database db, LoginRequest loginRequest) =>
 {
-    //w prawdziwej apce tutaj byœmy sprawdzali usera i has³o
-    return Results.Ok();
+    if (loginRequest == null || string.IsNullOrEmpty(loginRequest.Email) || string.IsNullOrEmpty(loginRequest.Password))
+        return Results.BadRequest("Email i has³o wymagane");
+
+    var user = db.Users.FirstOrDefault(u => u.Email == loginRequest.Email);
+    if (user == null) return Results.Unauthorized();
+
+    bool valid = Argon2.Verify(user.PasswordHash, loginRequest.Password);
+    if (!valid) return Results.Unauthorized();
+
+    return Results.Ok(new { token = "superTajnyToken" });
 });
 //rejestracja u¿ytkownika
 app.MapPost("/users", (Database db, User user) =>
@@ -61,3 +71,9 @@ app.MapPost("/chat/messages", (Database db, ChatMessage message) =>
     return Results.Created($"/chat/messages/{message.Timestamp.Ticks}", message);
 });
 app.Run();
+
+public class LoginRequest
+{
+    public string Email { get; set; }
+    public string Password { get; set; }
+}
